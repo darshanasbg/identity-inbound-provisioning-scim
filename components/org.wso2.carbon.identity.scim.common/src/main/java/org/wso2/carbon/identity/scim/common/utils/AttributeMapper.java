@@ -132,28 +132,42 @@ public class AttributeMapper {
                         String value = getValue(subAttribute);
                         log.info("Value: " + value);
 
-                        if (type != null && value == null) {
-                            Map<String, String> modifiedSubClaimsMap = new HashMap<>();
-                            for (Map.Entry<String, String> entry : subClaimsMap.entrySet()) {
-                                String subAttributeURI = entry.getKey();
+                        if (type != null) {
 
-                                if (subAttributeURI == null) {
-                                    if (!type.equals(entry.getValue())) {
-                                        log.error("Attribute URI cannot be null");
-                                        // Debug log (unexpected scenario)
+                            if (value == null) {
+
+                                // Complex Advanced multivalued attribute
+                                Map<String, String> modifiedSubClaimsMap = new HashMap<>();
+                                for (Map.Entry<String, String> entry : subClaimsMap.entrySet()) {
+                                    String subAttributeURI = entry.getKey();
+
+                                    if (subAttributeURI == null) {
+                                        if (!type.equals(entry.getValue())) {
+                                            log.error("Attribute URI cannot be null");
+                                            // Debug log (unexpected scenario)
+                                        }
+                                        continue;
                                     }
-                                    continue;
+
+                                    String modifiedSubAttributeURI = subAttributeURI.replace(attributeURI, attributeURI +
+                                            "#" + type);
+                                    modifiedSubClaimsMap.put(modifiedSubAttributeURI, entry.getValue());
+
+                                    log.info("Modifying the claim uri from: " + attributeURI + " to: " +
+                                            modifiedSubAttributeURI + " for value: " + entry.getValue());
                                 }
 
-                                String modifiedSubAttributeURI = subAttributeURI.replace(attributeURI, attributeURI +
-                                        "#" + type);
-                                modifiedSubClaimsMap.put(modifiedSubAttributeURI, entry.getValue());
+                                claimsMap.putAll(modifiedSubClaimsMap);
+                            } else {
+
+                                // Complex Basic multivalued attribute
+                                String modifiedAttributeURI = attributeURI + "." + type;
 
                                 log.info("Modifying the claim uri from: " + attributeURI + " to: " +
-                                        modifiedSubAttributeURI + " for value: " + entry.getValue());
-                            }
+                                        modifiedAttributeURI + " for value: " + value);
+                                claimsMap.put(modifiedAttributeURI, value);
 
-                            claimsMap.putAll(modifiedSubClaimsMap);
+                            }
                         } else {
                             log.error("Type cannot be null");
                             // Debug log (unexpected scenario)
