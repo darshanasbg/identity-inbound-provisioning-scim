@@ -145,7 +145,8 @@ public class AttributeMapper {
                                     continue;
                                 }
 
-                                String modifiedSubAttributeURI = subAttributeURI.replace(attributeURI, attributeURI + "." + type);
+                                String modifiedSubAttributeURI = subAttributeURI.replace(attributeURI, attributeURI +
+                                        "#" + type);
                                 modifiedSubClaimsMap.put(modifiedSubAttributeURI, entry.getValue());
 
                                 log.info("Modifying the claim uri from: " + attributeURI + " to: " +
@@ -374,7 +375,7 @@ public class AttributeMapper {
                 /*differenciate between sub attribute of Complex attribute and a Multivalued attribute
                 with complex value*/
                 if (isMultivalued(parentAttributeName, scimObjectType)) {
-                    //create map with complex value
+                    //create map with complex value (basic complex values)
                     Map<String, Object> complexValue = new HashMap<>();
                     complexValue.put(SCIMConstants.CommonSchemaConstants.TYPE, attributeNames[1]);
                     complexValue.put(SCIMConstants.CommonSchemaConstants.VALUE,
@@ -395,25 +396,97 @@ public class AttributeMapper {
                         ((AbstractSCIMObject) scimObject).setAttribute(multivaluedAttribute);
                     }
                 } else {
-                    //sub attribute of a complex attribute
-                    AttributeSchema subAttributeSchema = getAttributeSchema(attributeNames[1], scimObjectType);
-                    //we assume sub attribute is simple attribute
-                    SimpleAttribute simpleAttribute =
-                            new SimpleAttribute(attributeNames[1],
+                    if (parentAttributeName != null && parentAttributeName.contains("#")) {
+                        //multivalued complex value (advanced complex value)
+                        String[] parentAttributeNames = parentAttributeName.split("#");
+                        parentAttributeName = parentAttributeNames[0];
+                        parentAttributeSchema = getAttributeSchema(parentAttributeName, scimObjectType);
+
+
+                        String type = parentAttributeNames[1];
+                        String attributeName = attributeNames[1];
+
+                        Map<String, Object> complexValue = new HashMap<>();
+                        complexValue.put(SCIMConstants.CommonSchemaConstants.TYPE, type);
+
+                        //sub attribute of a complex attribute
+                        AttributeSchema subAttributeSchema = getAttributeSchema(attributeName, scimObjectType);
+                        complexValue.put(attributeName, AttributeUtil.getAttributeValueFromString(attributeEntry
+                                .getValue(), subAttributeSchema.getType()));
+
+                        //check whether parent attribute exists.
+                        if (((AbstractSCIMObject) scimObject).isAttributeExist(parentAttributeName)) {
+                            MultiValuedAttribute multiValuedAttribute =
+                                    (MultiValuedAttribute) scimObject.getAttribute(parentAttributeName);
+
+
+                            //we assume sub attribute is simple attribute
+                            SimpleAttribute simpleAttribute = new SimpleAttribute(attributeName,
                                     AttributeUtil.getAttributeValueFromString(attributeEntry.getValue(),
                                             subAttributeSchema.getType()));
-                    DefaultAttributeFactory.createAttribute(subAttributeSchema, simpleAttribute);
-                    //check whether parent attribute exists.
-                    if (((AbstractSCIMObject) scimObject).isAttributeExist(parentAttributeName)) {
-                        ComplexAttribute complexAttribute =
-                                (ComplexAttribute) scimObject.getAttribute(parentAttributeName);
-                        complexAttribute.setSubAttribute(simpleAttribute);
+                            simpleAttribute = (SimpleAttribute) DefaultAttributeFactory.createAttribute
+                                    (subAttributeSchema, simpleAttribute);
+
+                            boolean isAttributeExists = false;
+                            List<Attribute> subAttributeList = multiValuedAttribute.getValuesAsSubAttributes();
+                            for (Attribute subAttribute : subAttributeList) {
+
+                                if (subAttribute instanceof ComplexAttribute) {
+                                    ComplexAttribute complexSubAttribute = (ComplexAttribute) subAttribute;
+
+                                    String currentType = getType(complexSubAttribute);
+                                    log.info("Type: " + currentType);
+
+                                    if (type.equals(currentType)) {
+                                        complexSubAttribute.setSubAttribute(simpleAttribute);
+                                        isAttributeExists = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!isAttributeExists) {
+                                //create the attribute and set it in the scim object
+                                Map<String, Attribute> subAttributesMap = new HashMap<>();
+                                subAttributesMap.put(simpleAttribute.getName(), simpleAttribute);
+
+                                SimpleAttribute typeAttribute = new SimpleAttribute("type", type);
+                                typeAttribute = (SimpleAttribute)DefaultAttributeFactory.createAttribute
+                                        (SCIMSchemaDefinitions.TYPE, typeAttribute);
+                                subAttributesMap.put(typeAttribute.getName(), typeAttribute);
+
+                                multiValuedAttribute.setComplexValueWithSetOfSubAttributes(subAttributesMap);
+                            }
+                        } else {
+                            //create the attribute and set it in the scim object
+                            MultiValuedAttribute multivaluedAttribute = new MultiValuedAttribute(parentAttributeName);
+                            multivaluedAttribute.setComplexValue(complexValue);
+                            DefaultAttributeFactory.createAttribute(parentAttributeSchema, multivaluedAttribute);
+                            ((AbstractSCIMObject) scimObject).setAttribute(multivaluedAttribute);
+                        }
+
+
                     } else {
-                        //create parent attribute and set sub attribute
-                        ComplexAttribute complexAttribute = new ComplexAttribute(parentAttributeName);
-                        complexAttribute.setSubAttribute(simpleAttribute);
-                        DefaultAttributeFactory.createAttribute(parentAttributeSchema, complexAttribute);
-                        ((AbstractSCIMObject) scimObject).setAttribute(complexAttribute);
+                        //sub attribute of a complex attribute
+                        AttributeSchema subAttributeSchema = getAttributeSchema(attributeNames[1], scimObjectType);
+                        //we assume sub attribute is simple attribute
+                        SimpleAttribute simpleAttribute =
+                                new SimpleAttribute(attributeNames[1],
+                                        AttributeUtil.getAttributeValueFromString(attributeEntry.getValue(),
+                                                subAttributeSchema.getType()));
+                        DefaultAttributeFactory.createAttribute(subAttributeSchema, simpleAttribute);
+                        //check whether parent attribute exists.
+                        if (((AbstractSCIMObject) scimObject).isAttributeExist(parentAttributeName)) {
+                            ComplexAttribute complexAttribute =
+                                    (ComplexAttribute) scimObject.getAttribute(parentAttributeName);
+                            complexAttribute.setSubAttribute(simpleAttribute);
+                        } else {
+                            //create parent attribute and set sub attribute
+                            ComplexAttribute complexAttribute = new ComplexAttribute(parentAttributeName);
+                            complexAttribute.setSubAttribute(simpleAttribute);
+                            DefaultAttributeFactory.createAttribute(parentAttributeSchema, complexAttribute);
+                            ((AbstractSCIMObject) scimObject).setAttribute(complexAttribute);
+                        }
                     }
 
                 }
