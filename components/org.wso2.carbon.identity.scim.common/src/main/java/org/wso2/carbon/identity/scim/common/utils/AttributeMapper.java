@@ -414,18 +414,21 @@ public class AttributeMapper {
                         complexValue.put(attributeName, AttributeUtil.getAttributeValueFromString(attributeEntry
                                 .getValue(), subAttributeSchema.getType()));
 
+
+
+
+                        //we assume sub attribute is simple attribute
+                        SimpleAttribute simpleAttribute = new SimpleAttribute(attributeName,
+                                AttributeUtil.getAttributeValueFromString(attributeEntry.getValue(),
+                                        subAttributeSchema.getType()));
+                        simpleAttribute = (SimpleAttribute) DefaultAttributeFactory.createAttribute
+                                (subAttributeSchema, simpleAttribute);
+
                         //check whether parent attribute exists.
+                        MultiValuedAttribute multiValuedAttribute;
                         if (((AbstractSCIMObject) scimObject).isAttributeExist(parentAttributeName)) {
-                            MultiValuedAttribute multiValuedAttribute =
-                                    (MultiValuedAttribute) scimObject.getAttribute(parentAttributeName);
+                            multiValuedAttribute = (MultiValuedAttribute) scimObject.getAttribute(parentAttributeName);
 
-
-                            //we assume sub attribute is simple attribute
-                            SimpleAttribute simpleAttribute = new SimpleAttribute(attributeName,
-                                    AttributeUtil.getAttributeValueFromString(attributeEntry.getValue(),
-                                            subAttributeSchema.getType()));
-                            simpleAttribute = (SimpleAttribute) DefaultAttributeFactory.createAttribute
-                                    (subAttributeSchema, simpleAttribute);
 
                             boolean isAttributeExists = false;
                             List<Attribute> subAttributeList = multiValuedAttribute.getValuesAsSubAttributes();
@@ -459,10 +462,22 @@ public class AttributeMapper {
                             }
                         } else {
                             //create the attribute and set it in the scim object
-                            MultiValuedAttribute multivaluedAttribute = new MultiValuedAttribute(parentAttributeName);
-                            multivaluedAttribute.setComplexValue(complexValue);
-                            DefaultAttributeFactory.createAttribute(parentAttributeSchema, multivaluedAttribute);
-                            ((AbstractSCIMObject) scimObject).setAttribute(multivaluedAttribute);
+                            multiValuedAttribute = new MultiValuedAttribute(parentAttributeName);
+
+                            //create the attribute and set it in the scim object
+                            Map<String, Attribute> subAttributesMap = new HashMap<>();
+                            subAttributesMap.put(simpleAttribute.getName(), simpleAttribute);
+
+                            SimpleAttribute typeAttribute = new SimpleAttribute("type", type);
+                            typeAttribute = (SimpleAttribute)DefaultAttributeFactory.createAttribute
+                                    (SCIMSchemaDefinitions.TYPE, typeAttribute);
+                            subAttributesMap.put(typeAttribute.getName(), typeAttribute);
+
+
+                            multiValuedAttribute.setComplexValueWithSetOfSubAttributes(subAttributesMap);
+                            multiValuedAttribute = (MultiValuedAttribute) DefaultAttributeFactory.createAttribute
+                                    (parentAttributeSchema, multiValuedAttribute);
+                            ((AbstractSCIMObject) scimObject).setAttribute(multiValuedAttribute);
                         }
 
 
